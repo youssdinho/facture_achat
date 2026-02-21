@@ -1,8 +1,8 @@
 // Facture Achat Customizations - Amanatem
-// v1.0.0 : Toutes les fonctionnalités de facture_vente adaptées pour Purchase Invoice
-// Navigation clavier robuste via délégation d'événements
-// Fonctionne dans TOUS les cas : nouveau doc, après enregistrement,
-// après réorganisation des colonnes, retour sur doc existant, etc.
+// v1.1.1
+// Navigation : Fournisseur → N° Facture Fournisseur → Article → Qté → Prix → ligne suivante
+// Fix : le curseur ne quitte bill_no QUE sur pression de la touche ENTRÉE
+// Validation unicité N° Facture par Fournisseur
 
 frappe.ui.form.on('Purchase Invoice', {
 	setup: function(frm) {
@@ -21,7 +21,6 @@ frappe.ui.form.on('Purchase Invoice', {
 
 		if (frm.is_new() && !frm.doc.amended_from) {
 			frm.set_value('update_stock', 1);
-			// Si pas encore de fournisseur → focus sur supplier
 			if (!frm.doc.supplier) {
 				setTimeout(function() {
 					frm.fields_dict.supplier.set_focus();
@@ -29,7 +28,6 @@ frappe.ui.form.on('Purchase Invoice', {
 			}
 		}
 
-		// Configuration de la recherche personnalisée
 		frm.fields_dict['items'].grid.get_field('item_code').get_query = function() {
 			return {
 				query: 'facture_achat.custom.purchase_invoice.search_item',
@@ -37,32 +35,118 @@ frappe.ui.form.on('Purchase Invoice', {
 			};
 		};
 
-		// Setup HTML rendering pour awesomplete
 		setup_html_rendering(frm);
-
-		// (Ré)attacher la délégation à chaque refresh
 		attach_grid_delegation(frm);
+		attach_bill_no_enter(frm);
 	},
 
-	// Événement sur le champ fournisseur (équivalent de "customer" dans facture_vente)
+	// Fournisseur sélectionné → focus sur N° Facture Fournisseur
 	supplier: function(frm) {
 		if (frm.doc.supplier) {
-			setup_html_rendering(frm);
-			setTimeout(() => focusOnInlineItemCode(frm), 600);
+			setTimeout(function() {
+				if (frm.fields_dict.bill_no) {
+					frm.fields_dict.bill_no.set_focus();
+					// (Ré)attacher le keydown sur bill_no après focus
+					attach_bill_no_enter(frm);
+				}
+			}, 400);
+		}
+	},
+
+	// NE PAS utiliser l'événement bill_no de Frappe pour naviguer :
+	// il se déclenche dès que le champ change, pas seulement sur ENTRÉE.
+	// La navigation est gérée par attach_bill_no_enter() via keydown.
+
+	validate: function(frm) {
+		if (!frm.doc.bill_no) {
+			frappe.msgprint({
+				title: __('Champ obligatoire'),
+				indicator: 'orange',
+				message: __('Veuillez saisir le N° de Facture Fournisseur.')
+			});
 		}
 	}
 });
 
 frappe.ui.form.on('Purchase Invoice Item', {
-	items_add: function(frm, cdt, cdn) {
-		// Rien à faire, la délégation gère les nouvelles lignes automatiquement
-	}
+	items_add: function(frm, cdt, cdn) {}
 });
 
 // ─────────────────────────────────────────────────────────────────
-// DÉLÉGATION D'ÉVÉNEMENTS — cœur de la solution
-// Un seul listener sur le conteneur stable du grid.
-// Capte les keydown peu importe si les inputs sont recréés.
+// KEYDOWN SUR BILL_NO — navigation uniquement sur ENTRÉE
+// ─────────────────────────────────────────────────────────────────
+
+function attach_bill_no_enter(frm) {
+	// Cibler l'input du champ bill_no
+	const $field = frm.fields_dict.bill_no && frm.fields_dict.bill_no.$input;
+	if (!$field || !$field.length) return;
+
+	// Éviter les doublons
+	$field.off('keydown.fa_bill_no');
+
+	$field.on('keydown.fa_bill_no', function(e) {
+		if (e.keyCode !== 13 && e.which !== 13) return;
+
+		const bill_no = $field.val().trim();
+		if (!bill_no) return; // Rien de saisi → on reste sur place
+
+		e.preventDefault();
+		e.stopPropagation();
+
+		// Vérifier doublon, puis aller sur Article si OK
+		validate_bill_no_unique(frm, bill_no, function() {
+			setup_html_rendering(frm);
+			setTimeout(() => focusOnInlineItemCode(frm), 300);
+		});
+	});
+}
+
+// ─────────────────────────────────────────────────────────────────
+// VALIDATION UNICITÉ N° FACTURE FOURNISSEUR
+// ─────────────────────────────────────────────────────────────────
+
+function validate_bill_no_unique(frm, bill_no, on_success) {
+	if (!bill_no || !frm.doc.supplier) {
+		if (on_success) on_success();
+		return;
+	}
+
+	frappe.call({
+		method: 'facture_achat.custom.purchase_invoice.check_duplicate_bill_no',
+		args: {
+			supplier: frm.doc.supplier,
+			bill_no: bill_no,
+			current_name: frm.doc.name || ''
+		},
+		callback: function(r) {
+			if (r.message && r.message.duplicate) {
+				frappe.msgprint({
+					title: __('N° de Facture Dupliqué'),
+					indicator: 'red',
+					message: __(
+						'⚠️ Le fournisseur <b>{0}</b> a déjà une facture avec le N° <b>{1}</b> : {2}',
+						[frm.doc.supplier, bill_no, r.message.existing_doc]
+					)
+				});
+				// Vider le champ et remettre le focus
+				frm.set_value('bill_no', '');
+				setTimeout(function() {
+					if (frm.fields_dict.bill_no) {
+						frm.fields_dict.bill_no.set_focus();
+						attach_bill_no_enter(frm);
+					}
+				}, 300);
+			} else {
+				// Sauvegarder la valeur dans le doc Frappe
+				frm.set_value('bill_no', bill_no);
+				if (on_success) on_success();
+			}
+		}
+	});
+}
+
+// ─────────────────────────────────────────────────────────────────
+// DÉLÉGATION D'ÉVÉNEMENTS GRID
 // ─────────────────────────────────────────────────────────────────
 
 function attach_grid_delegation(frm) {
@@ -70,11 +154,8 @@ function attach_grid_delegation(frm) {
 	if (!grid || !grid.wrapper) return;
 
 	const $wrapper = $(grid.wrapper);
-
-	// Supprimer l'ancien listener pour éviter les doublons
 	$wrapper.off('keydown.fa_navigation');
 
-	// Attacher UN listener délégué sur tout le grid
 	$wrapper.on('keydown.fa_navigation', 'input', function(e) {
 		if (e.keyCode !== 13 && e.which !== 13) return;
 
@@ -84,9 +165,8 @@ function attach_grid_delegation(frm) {
 		const $row = $input.closest('.grid-row[data-idx]');
 		if (!$row.length) return;
 
-		const rowIndex = parseInt($row.attr('data-idx')) - 1; // 0-based
+		const rowIndex = parseInt($row.attr('data-idx')) - 1;
 
-		// Ignorer si le dropdown awesomplete est ouvert et visible
 		const $awesomplete = $input.siblings('ul.awesomplete, ul');
 		if ($awesomplete.length && $awesomplete.is(':visible')) return;
 
@@ -108,8 +188,6 @@ function attach_grid_delegation(frm) {
 				e.preventDefault();
 				e.stopPropagation();
 				save_field_value(frm, rowIndex, 'rate', $input.val());
-				// Si une ligne suivante existe → aller sur son item_code
-				// Sinon → ajouter une nouvelle ligne
 				if (frm.doc.items && frm.doc.items[rowIndex + 1]) {
 					setTimeout(() => clickAndFocusCell(frm, rowIndex + 1, 'item_code'), 150);
 				} else {
@@ -121,39 +199,30 @@ function attach_grid_delegation(frm) {
 }
 
 // ─────────────────────────────────────────────────────────────────
-// FOCUS ROBUSTE sur un champ d'une ligne donnée
-// Essaie d'abord via l'API Frappe, puis via jQuery/DOM
+// FOCUS ROBUSTE
 // ─────────────────────────────────────────────────────────────────
 
 function focusField(frm, rowIndex, fieldname) {
 	const grid = frm.fields_dict.items.grid;
 	let done = false;
 
-	// Tentative 1 : via grid_rows de Frappe
 	if (grid && grid.grid_rows && grid.grid_rows[rowIndex]) {
 		const row = grid.grid_rows[rowIndex];
 		if (row.on_grid_fields_dict && row.on_grid_fields_dict[fieldname]) {
 			const field = row.on_grid_fields_dict[fieldname];
 			if (field && field.$input) {
 				field.$input.focus();
-				setTimeout(() => {
-					field.$input.select();
-					flash_border(field.$input);
-				}, 20);
+				setTimeout(() => { field.$input.select(); flash_border(field.$input); }, 20);
 				done = true;
 			}
 		}
 	}
 
-	// Tentative 2 : via DOM
 	if (!done) {
 		const $input = $(`.grid-body .grid-row[data-idx="${rowIndex + 1}"] [data-fieldname="${fieldname}"] input`);
 		if ($input.length) {
 			$input.focus();
-			setTimeout(() => {
-				$input.select();
-				flash_border($input);
-			}, 20);
+			setTimeout(() => { $input.select(); flash_border($input); }, 20);
 			done = true;
 		}
 	}
@@ -161,40 +230,27 @@ function focusField(frm, rowIndex, fieldname) {
 	return done;
 }
 
-// ─────────────────────────────────────────────────────────────────
-// SAUVEGARDER la valeur d'un champ si elle a changé
-// ─────────────────────────────────────────────────────────────────
-
 function save_field_value(frm, rowIndex, fieldname, inputVal) {
 	const currentRow = frm.doc.items && frm.doc.items[rowIndex];
 	if (!currentRow) return;
-
 	const val = flt(inputVal);
 	if (val && val !== flt(currentRow[fieldname])) {
 		frappe.model.set_value(currentRow.doctype, currentRow.name, fieldname, val);
 	}
 }
 
-// ─────────────────────────────────────────────────────────────────
-// AJOUTER une nouvelle ligne et focus sur item_code
-// ─────────────────────────────────────────────────────────────────
-
 function addNewRowAndFocusItemCode(frm) {
 	try {
 		frm.add_child('items');
 		frm.refresh_field('items');
 		const newIndex = frm.doc.items.length - 1;
-
 		setTimeout(() => {
 			const $cell = $(`.grid-body .grid-row[data-idx="${newIndex + 1}"] [data-fieldname="item_code"]`);
 			if ($cell.length) {
 				$cell.click();
 				setTimeout(() => {
 					const $input = $cell.find('input');
-					if ($input.length) {
-						$input.focus().select();
-						flash_border($input);
-					}
+					if ($input.length) { $input.focus().select(); flash_border($input); }
 				}, 50);
 			} else {
 				focusField(frm, newIndex, 'item_code');
@@ -205,25 +261,15 @@ function addNewRowAndFocusItemCode(frm) {
 	}
 }
 
-// ─────────────────────────────────────────────────────────────────
-// FOCUS initial sur item_code après sélection du fournisseur
-// ─────────────────────────────────────────────────────────────────
-
 function focusOnInlineItemCode(frm) {
 	if (!frm.fields_dict.items) return;
-
 	const hasItems = frm.doc.items && frm.doc.items.length > 0;
-
 	if (!hasItems) {
 		frm.add_child('items');
 		frm.refresh_field('items');
-		setTimeout(() => {
-			clickAndFocusCell(frm, 0, 'item_code');
-		}, 120);
+		setTimeout(() => { clickAndFocusCell(frm, 0, 'item_code'); }, 120);
 	} else {
-		setTimeout(() => {
-			clickAndFocusCell(frm, 0, 'item_code');
-		}, 80);
+		setTimeout(() => { clickAndFocusCell(frm, 0, 'item_code'); }, 80);
 	}
 }
 
@@ -233,19 +279,12 @@ function clickAndFocusCell(frm, rowIndex, fieldname) {
 		$cell.click();
 		setTimeout(() => {
 			const $input = $cell.find('input');
-			if ($input.length) {
-				$input.focus().select();
-				flash_border($input);
-			}
+			if ($input.length) { $input.focus().select(); flash_border($input); }
 		}, 40);
 	} else {
 		focusField(frm, rowIndex, fieldname);
 	}
 }
-
-// ─────────────────────────────────────────────────────────────────
-// INDICATEUR VISUEL — bordure verte temporaire
-// ─────────────────────────────────────────────────────────────────
 
 function flash_border($el) {
 	$el.css('border', '2px solid #4CAF50');
@@ -253,67 +292,50 @@ function flash_border($el) {
 }
 
 // ─────────────────────────────────────────────────────────────────
-// STYLES CSS — dropdown awesomplete élargi
+// STYLES DROPDOWN AWESOMPLETE
 // ─────────────────────────────────────────────────────────────────
 
 function inject_dropdown_styles() {
 	const style_id = 'facture-achat-dropdown-style';
 	if (document.getElementById(style_id)) return;
-
 	const style = document.createElement('style');
 	style.id = style_id;
 	style.innerHTML = `
-		.grid-row .awesomplete ul,
-		.awesomplete ul {
-			min-width: 600px !important;
-			max-width: 900px !important;
-			max-height: 85vh !important;
-			overflow-y: auto !important;
-			z-index: 9999 !important;
-			box-shadow: 0 6px 24px rgba(0,0,0,0.18) !important;
-			border-radius: 6px !important;
-			border: 1px solid #d1d8dd !important;
+		.grid-row .awesomplete ul, .awesomplete ul {
+			min-width: 600px !important; max-width: 900px !important;
+			max-height: 85vh !important; overflow-y: auto !important;
+			z-index: 9999 !important; box-shadow: 0 6px 24px rgba(0,0,0,0.18) !important;
+			border-radius: 6px !important; border: 1px solid #d1d8dd !important;
 			background: #fff !important;
 		}
-		.grid-row .awesomplete ul li,
-		.awesomplete ul li {
-			padding: 7px 14px !important;
-			line-height: 1.6 !important;
+		.grid-row .awesomplete ul li, .awesomplete ul li {
+			padding: 7px 14px !important; line-height: 1.6 !important;
 			border-bottom: 1px solid #f0f0f0 !important;
-			cursor: pointer !important;
-			white-space: nowrap !important;
+			cursor: pointer !important; white-space: nowrap !important;
 		}
 		.grid-row .awesomplete ul li:hover,
 		.grid-row .awesomplete ul li[aria-selected="true"],
-		.awesomplete ul li:hover,
-		.awesomplete ul li[aria-selected="true"] {
+		.awesomplete ul li:hover, .awesomplete ul li[aria-selected="true"] {
 			background: #f0f4ff !important;
 		}
-		.grid-row .awesomplete ul li mark,
-		.awesomplete ul li mark {
-			background: #fff3cd !important;
-			font-weight: bold !important;
-			padding: 0 !important;
+		.grid-row .awesomplete ul li mark, .awesomplete ul li mark {
+			background: #fff3cd !important; font-weight: bold !important; padding: 0 !important;
 		}
 	`;
 	document.head.appendChild(style);
 }
 
 // ─────────────────────────────────────────────────────────────────
-// HTML RENDERING — awesomplete avec HTML + page_len 50
+// HTML RENDERING AWESOMPLETE
 // ─────────────────────────────────────────────────────────────────
 
 function setup_html_rendering(frm) {
 	setTimeout(function() {
 		let item_field = frm.fields_dict['items'].grid.get_field('item_code');
 		if (!item_field) return;
-
 		let original_setup = item_field.setup_awesomplete;
-
 		item_field.setup_awesomplete = function() {
-			if (original_setup) {
-				original_setup.call(this);
-			}
+			if (original_setup) original_setup.call(this);
 			let me = this;
 			if (me.awesomplete) {
 				me.awesomplete.item = function(text, input) {
@@ -325,7 +347,6 @@ function setup_html_rendering(frm) {
 				me.awesomplete.maxItems = 50;
 			}
 		};
-
 		if (item_field.awesomplete) {
 			item_field.awesomplete.maxItems = 50;
 			item_field.setup_awesomplete();

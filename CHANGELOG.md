@@ -1,3 +1,11 @@
+## [1.1.1] — 2026-02-21
+
+### Modifié
+- **Curseur bill_no** : le curseur ne quitte plus le champ N° Facture Fournisseur automatiquement — il attend explicitement la touche **ENTRÉE** avant de passer à l'Article (fix bug déclenchement prématuré via événement Frappe)
+- **Validation unicité N° Facture** : un même fournisseur ne peut pas avoir deux factures avec le même N° de Facture Fournisseur (bill_no) — vérification en temps réel (JS) et blocage à l'enregistrement (Python)
+- **Flux curseur complet** : Fournisseur → N° Facture Fournisseur → [ENTRÉE] → Article → Qté → Prix → ligne suivante
+
+
 ## [1.0.0] — 2026-02-17
 
 ### Ajouté

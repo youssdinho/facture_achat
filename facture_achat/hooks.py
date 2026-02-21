@@ -11,6 +11,7 @@ app_license = "mit"
 doc_events = {
     "Purchase Invoice": {
         "onload": "facture_achat.custom.purchase_invoice.set_default_update_stock",
+        "validate": "facture_achat.custom.purchase_invoice.validate_duplicate_bill_no",
     }
 }
 
