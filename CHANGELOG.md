@@ -1,3 +1,12 @@
+## [1.2.0] — 2026-02-22
+
+### Modifié
+- **Dropdown Article** : suppression de l'affichage enrichi (Stock coloré, PA, PMP)
+  → retour à l'affichage par défaut ERPNext (item_code + item_name)
+- **Suppression** de la fonction `search_item` (Python) et de `setup_html_rendering` (JS)
+- **Suppression** de la `get_query` personnalisée sur `item_code`
+
+
 ## [1.1.1] — 2026-02-21
 
 ### Modifié

@@ -1,8 +1,7 @@
 // Facture Achat Customizations - Amanatem
-// v1.1.1
+// v1.2.0
 // Navigation : Fournisseur → N° Facture Fournisseur → Article → Qté → Prix → ligne suivante
-// Fix : le curseur ne quitte bill_no QUE sur pression de la touche ENTRÉE
-// Validation unicité N° Facture par Fournisseur
+// Affichage dropdown Article : par défaut ERPNext (sans Stock / PA / PMP)
 
 frappe.ui.form.on('Purchase Invoice', {
 	setup: function(frm) {
@@ -28,14 +27,6 @@ frappe.ui.form.on('Purchase Invoice', {
 			}
 		}
 
-		frm.fields_dict['items'].grid.get_field('item_code').get_query = function() {
-			return {
-				query: 'facture_achat.custom.purchase_invoice.search_item',
-				page_len: 50
-			};
-		};
-
-		setup_html_rendering(frm);
 		attach_grid_delegation(frm);
 		attach_bill_no_enter(frm);
 	},
@@ -46,16 +37,11 @@ frappe.ui.form.on('Purchase Invoice', {
 			setTimeout(function() {
 				if (frm.fields_dict.bill_no) {
 					frm.fields_dict.bill_no.set_focus();
-					// (Ré)attacher le keydown sur bill_no après focus
 					attach_bill_no_enter(frm);
 				}
 			}, 400);
 		}
 	},
-
-	// NE PAS utiliser l'événement bill_no de Frappe pour naviguer :
-	// il se déclenche dès que le champ change, pas seulement sur ENTRÉE.
-	// La navigation est gérée par attach_bill_no_enter() via keydown.
 
 	validate: function(frm) {
 		if (!frm.doc.bill_no) {
@@ -77,25 +63,21 @@ frappe.ui.form.on('Purchase Invoice Item', {
 // ─────────────────────────────────────────────────────────────────
 
 function attach_bill_no_enter(frm) {
-	// Cibler l'input du champ bill_no
 	const $field = frm.fields_dict.bill_no && frm.fields_dict.bill_no.$input;
 	if (!$field || !$field.length) return;
 
-	// Éviter les doublons
 	$field.off('keydown.fa_bill_no');
 
 	$field.on('keydown.fa_bill_no', function(e) {
 		if (e.keyCode !== 13 && e.which !== 13) return;
 
 		const bill_no = $field.val().trim();
-		if (!bill_no) return; // Rien de saisi → on reste sur place
+		if (!bill_no) return;
 
 		e.preventDefault();
 		e.stopPropagation();
 
-		// Vérifier doublon, puis aller sur Article si OK
 		validate_bill_no_unique(frm, bill_no, function() {
-			setup_html_rendering(frm);
 			setTimeout(() => focusOnInlineItemCode(frm), 300);
 		});
 	});
@@ -128,7 +110,6 @@ function validate_bill_no_unique(frm, bill_no, on_success) {
 						[frm.doc.supplier, bill_no, r.message.existing_doc]
 					)
 				});
-				// Vider le champ et remettre le focus
 				frm.set_value('bill_no', '');
 				setTimeout(function() {
 					if (frm.fields_dict.bill_no) {
@@ -137,7 +118,6 @@ function validate_bill_no_unique(frm, bill_no, on_success) {
 					}
 				}, 300);
 			} else {
-				// Sauvegarder la valeur dans le doc Frappe
 				frm.set_value('bill_no', bill_no);
 				if (on_success) on_success();
 			}
@@ -302,7 +282,7 @@ function inject_dropdown_styles() {
 	style.id = style_id;
 	style.innerHTML = `
 		.grid-row .awesomplete ul, .awesomplete ul {
-			min-width: 600px !important; max-width: 900px !important;
+			min-width: 400px !important; max-width: 700px !important;
 			max-height: 85vh !important; overflow-y: auto !important;
 			z-index: 9999 !important; box-shadow: 0 6px 24px rgba(0,0,0,0.18) !important;
 			border-radius: 6px !important; border: 1px solid #d1d8dd !important;
@@ -311,45 +291,13 @@ function inject_dropdown_styles() {
 		.grid-row .awesomplete ul li, .awesomplete ul li {
 			padding: 7px 14px !important; line-height: 1.6 !important;
 			border-bottom: 1px solid #f0f0f0 !important;
-			cursor: pointer !important; white-space: nowrap !important;
+			cursor: pointer !important;
 		}
 		.grid-row .awesomplete ul li:hover,
 		.grid-row .awesomplete ul li[aria-selected="true"],
 		.awesomplete ul li:hover, .awesomplete ul li[aria-selected="true"] {
 			background: #f0f4ff !important;
 		}
-		.grid-row .awesomplete ul li mark, .awesomplete ul li mark {
-			background: #fff3cd !important; font-weight: bold !important; padding: 0 !important;
-		}
 	`;
 	document.head.appendChild(style);
-}
-
-// ─────────────────────────────────────────────────────────────────
-// HTML RENDERING AWESOMPLETE
-// ─────────────────────────────────────────────────────────────────
-
-function setup_html_rendering(frm) {
-	setTimeout(function() {
-		let item_field = frm.fields_dict['items'].grid.get_field('item_code');
-		if (!item_field) return;
-		let original_setup = item_field.setup_awesomplete;
-		item_field.setup_awesomplete = function() {
-			if (original_setup) original_setup.call(this);
-			let me = this;
-			if (me.awesomplete) {
-				me.awesomplete.item = function(text, input) {
-					let html = input.trim() === ""
-						? text
-						: text.replace(RegExp(input.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), "gi"), "<mark>$&</mark>");
-					return $.parseHTML("<li>" + html + "</li>")[0];
-				};
-				me.awesomplete.maxItems = 50;
-			}
-		};
-		if (item_field.awesomplete) {
-			item_field.awesomplete.maxItems = 50;
-			item_field.setup_awesomplete();
-		}
-	}, 500);
 }
