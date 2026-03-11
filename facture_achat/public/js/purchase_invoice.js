@@ -1,7 +1,7 @@
 // Facture Achat Customizations - Amanatem
-// v1.2.0
+// v1.3.0
 // Navigation : Fournisseur → N° Facture Fournisseur → Article → Qté → Prix → ligne suivante
-// Affichage dropdown Article : par défaut ERPNext (sans Stock / PA / PMP)
+// Recherche multi-mots sur item_code / item_name
 
 frappe.ui.form.on('Purchase Invoice', {
 	setup: function(frm) {
@@ -17,6 +17,13 @@ frappe.ui.form.on('Purchase Invoice', {
 
 	refresh: function(frm) {
 		inject_dropdown_styles();
+
+		// Recherche multi-mots sur item_code
+		frm.fields_dict['items'].grid.get_field('item_code').get_query = function() {
+			return {
+				query: 'facture_achat.custom.purchase_invoice.search_item'
+			};
+		};
 
 		if (frm.is_new() && !frm.doc.amended_from) {
 			frm.set_value('update_stock', 1);

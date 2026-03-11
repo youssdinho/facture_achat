@@ -1,3 +1,20 @@
+## [1.3.1] — 2026-03-11
+
+### Corrigé
+- **Fix décorateur** : suppression de `@frappe.validate_and_sanitize_search_input` non disponible sur cette version de Frappe
+- Fonction `search_item` opérationnelle sans ce décorateur (sécurité gérée par Frappe en amont)
+
+## [1.3.0] — 2026-03-11
+
+### Ajouté
+- **Recherche multi-mots** : réintégration de `search_item` (Python whitelisted)
+  - Exemple : taper "BB C AA" retrouve les articles contenant BB ET C ET AA (ordre libre)
+  - Recherche sur `item_code` ET `item_name` simultanément
+- **get_query** rebranché sur `item_code` dans le JS (refresh)
+
+### Supprimé (depuis v1.2.0, corrigé ici)
+- La suppression de `search_item` en v1.2.0 avait cassé la recherche intelligente multi-mots
+
 ## [1.2.0] — 2026-02-22
 
 ### Modifié
@@ -6,14 +23,12 @@
 - **Suppression** de la fonction `search_item` (Python) et de `setup_html_rendering` (JS)
 - **Suppression** de la `get_query` personnalisée sur `item_code`
 
-
 ## [1.1.1] — 2026-02-21
 
 ### Modifié
 - **Curseur bill_no** : le curseur ne quitte plus le champ N° Facture Fournisseur automatiquement — il attend explicitement la touche **ENTRÉE** avant de passer à l'Article (fix bug déclenchement prématuré via événement Frappe)
 - **Validation unicité N° Facture** : un même fournisseur ne peut pas avoir deux factures avec le même N° de Facture Fournisseur (bill_no) — vérification en temps réel (JS) et blocage à l'enregistrement (Python)
 - **Flux curseur complet** : Fournisseur → N° Facture Fournisseur → [ENTRÉE] → Article → Qté → Prix → ligne suivante
-
 
 ## [1.0.0] — 2026-02-17
 

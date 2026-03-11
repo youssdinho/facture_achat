@@ -1,6 +1,6 @@
 """
 Purchase Invoice Customizations - Amanatem
-    v1.2.0 : Suppression affichage enrichi dropdown → retour affichage par défaut
+    v1.3.1 : Fix décorateur validate_and_sanitize_search_input non disponible
 """
 
 import frappe
@@ -65,3 +65,51 @@ def check_duplicate_bill_no(supplier, bill_no, current_name=""):
 		return {"duplicate": True, "existing_doc": existing}
 
 	return {"duplicate": False}
+
+
+@frappe.whitelist()
+def search_item(doctype, txt, searchfield, start, page_len, filters):
+	"""
+	Recherche multi-mots sur item_code + item_name.
+	Exemple : "BB C AA" → articles contenant BB ET C ET AA (ordre libre).
+	"""
+	txt = txt or ""
+	words = [w.strip() for w in txt.split() if w.strip()]
+	if not words:
+		words = [txt] if txt else []
+
+	if not words:
+		results = frappe.db.sql(
+			"""
+			SELECT item_code, item_name
+			FROM `tabItem`
+			WHERE disabled = 0
+			ORDER BY item_code
+			LIMIT %s OFFSET %s
+			""",
+			(int(page_len), int(start)),
+		)
+		return results
+
+	conditions = []
+	values = []
+	for word in words:
+		conditions.append("(item_code LIKE %s OR item_name LIKE %s)")
+		values.extend([f"%{word}%", f"%{word}%"])
+
+	where_clause = " AND ".join(conditions)
+
+	results = frappe.db.sql(
+		f"""
+		SELECT item_code, item_name
+		FROM `tabItem`
+		WHERE disabled = 0
+		  AND ({where_clause})
+		ORDER BY
+			CASE WHEN item_code LIKE %s THEN 0 ELSE 1 END,
+			item_code
+		LIMIT %s OFFSET %s
+		""",
+		values + [f"{txt}%", int(page_len), int(start)],
+	)
+	return results
