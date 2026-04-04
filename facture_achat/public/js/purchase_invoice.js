@@ -1,5 +1,5 @@
 // Facture Achat Customizations - Amanatem
-// v1.3.0
+// v1.3.2
 // Navigation : Fournisseur → N° Facture Fournisseur → Article → Qté → Prix → ligne suivante
 // Recherche multi-mots sur item_code / item_name
 

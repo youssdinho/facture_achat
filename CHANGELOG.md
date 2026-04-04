@@ -1,3 +1,10 @@
+## [1.3.2] — 2026-04-04
+
+### Ajouté
+- **Précision 6 décimales sur le prix unitaire** : le champ `rate` (prix unitaire) dans les lignes de facture achat accepte désormais jusqu'à 6 chiffres après la virgule
+  - Implémenté via Property Setter (`Purchase Invoice Item-rate-precision = 6`)
+  - Effet limité à la Facture Achat uniquement — aucun impact sur le reste du système
+
 ## [1.3.1] — 2026-03-11
 
 ### Corrigé
