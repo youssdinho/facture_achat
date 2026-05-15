@@ -1,10 +1,21 @@
 """
 Purchase Invoice Customizations - Amanatem
-    v1.3.1 : Fix décorateur validate_and_sanitize_search_input non disponible
+	v1.3.2 : Sync titre depuis fournisseur (before_save)
 """
 
 import frappe
 from frappe import _
+
+logger = frappe.logger("facture_achat")
+
+
+def sync_title_from_supplier(doc, method=None):
+	if doc.supplier:
+		supplier_name = frappe.db.get_value("Supplier", doc.supplier, "supplier_name")
+		logger.info(f"sync_title_from_supplier | supplier={doc.supplier} | fetched={supplier_name} | current_title={doc.title}")
+		if supplier_name:
+			doc.supplier_name = supplier_name
+			doc.title = supplier_name
 
 
 def set_default_update_stock(doc, method=None):

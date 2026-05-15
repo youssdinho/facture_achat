@@ -1,3 +1,10 @@
+## [1.3.3] — 2026-05-15
+
+### Ajouté
+- **Sync titre depuis fournisseur** : le titre de la Facture Achat se met automatiquement à jour avec le nom du fournisseur à chaque enregistrement (hook `before_save`)
+  - Même comportement que dans `facture_vente` (sync titre depuis client)
+  - Champs mis à jour : `supplier_name` et `title`
+
 ## [1.3.2] — 2026-04-04
 
 ### Ajouté
