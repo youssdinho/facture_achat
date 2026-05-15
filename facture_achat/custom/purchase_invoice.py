@@ -55,6 +55,32 @@ def validate_duplicate_bill_no(doc, method=None):
 
 
 @frappe.whitelist()
+def migrate_sync_titles():
+	"""Migration : synchronise le titre de toutes les Purchase Invoice existantes."""
+	invoices = frappe.db.sql("""
+		SELECT pi.name, pi.title, s.supplier_name
+		FROM `tabPurchase Invoice` pi
+		LEFT JOIN `tabSupplier` s ON s.name = pi.supplier
+		WHERE pi.supplier IS NOT NULL AND pi.supplier != ''
+	""", as_dict=True)
+
+	updated = 0
+	skipped = 0
+	for inv in invoices:
+		if inv.supplier_name and inv.title != inv.supplier_name:
+			frappe.db.set_value("Purchase Invoice", inv.name, {
+				"title": inv.supplier_name,
+				"supplier_name": inv.supplier_name
+			}, update_modified=False)
+			updated += 1
+		else:
+			skipped += 1
+
+	frappe.db.commit()
+	return f"Terminé : {updated} mises à jour, {skipped} déjà correctes."
+
+
+@frappe.whitelist()
 def check_duplicate_bill_no(supplier, bill_no, current_name=""):
 	"""
 	Vérifie en temps réel si le N° de facture fournisseur existe déjà pour ce supplier.
